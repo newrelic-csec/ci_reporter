@@ -10,10 +10,11 @@ describe "The RSpec reporter" do
     @error = mock("error")
     @error.stub!(:expectation_not_met?).and_return(false)
     @error.stub!(:pending_fixed?).and_return(false)
+    @error.stub!(:exception).and_return(StandardError.new)
     @report_mgr = mock("report manager")
     @options = mock("options")
     @args = [@options, StringIO.new("")]
-    @args.shift if Spec::VERSION::MAJOR == 1 && Spec::VERSION::MINOR < 1
+    @args.shift unless defined?(::Spec) && ::Spec::VERSION::MAJOR == 1 && ::Spec::VERSION::MINOR >= 1
     @fmt = CI::Reporter::RSpec.new *@args
     @fmt.report_manager = @report_mgr
     @formatter = mock("formatter")
@@ -22,12 +23,12 @@ describe "The RSpec reporter" do
 
   it "should use a progress bar formatter by default" do
     fmt = CI::Reporter::RSpec.new *@args
-    fmt.formatter.should be_instance_of(Spec::Runner::Formatter::ProgressBarFormatter)
+    fmt.formatter.should be_instance_of(CI::Reporter::RSpecFormatters::ProgressFormatter)
   end
 
   it "should use a specdoc formatter for RSpecDoc" do
     fmt = CI::Reporter::RSpecDoc.new *@args
-    fmt.formatter.should be_instance_of(Spec::Runner::Formatter::SpecdocFormatter)
+    fmt.formatter.should be_instance_of(CI::Reporter::RSpecFormatters::DocFormatter)
   end
 
   it "should create a test suite with one success, one failure, and one pending" do
@@ -121,5 +122,25 @@ describe "The RSpec reporter" do
     @fmt.example_group_started(example_group)
     @fmt.example_failed("should fail", 1, @error)
     @fmt.dump_summary(0.1, 1, 0, 0)
+  end
+  
+  describe 'RSpec2Failure' do
+    before(:each) do
+      @rspec20_example = mock('RSpec2.0 Example', :execution_result => {:exception_encountered => StandardError.new('rspec2.0 ftw')})
+      @rspec22_example = mock('RSpec2.2 Example', :execution_result => {:exception => StandardError.new('rspec2.2 ftw')})
+    end
+
+    it 'should handle rspec (< 2.2) execution results' do
+      failure = CI::Reporter::RSpec2Failure.new(@rspec20_example)
+      failure.name.should_not be_nil
+      failure.message.should == 'rspec2.0 ftw'
+      failure.location.should_not be_nil
+    end
+    it 'should handle rspec (>= 2.2) execution results' do
+      failure = CI::Reporter::RSpec2Failure.new(@rspec22_example)
+      failure.name.should_not be_nil
+      failure.message.should == 'rspec2.2 ftw'
+      failure.location.should_not be_nil
+    end
   end
 end
